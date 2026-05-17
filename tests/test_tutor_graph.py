@@ -90,6 +90,7 @@ def test_learning_state_and_pedagogy():
     assert decide_pedagogy("deeply_struggling", 4, []).strategy == "analogy"
     assert decide_pedagogy("progressing", 4, []).strategy == "near_answer"
     assert decide_pedagogy("progressing", 1, []).strategy == "socratic_question"
+    assert decide_pedagogy("confused", 8, []).hint_level == 5
 
 
 def test_graph_jailbreak_short_circuits(monkeypatch):
@@ -100,6 +101,23 @@ def test_graph_jailbreak_short_circuits(monkeypatch):
     assert result["intent"] == "jailbreak"
     assert result["pedagogy"]["strategy"] == "blocked"
     assert result["updated_state"]["hint_count"] == 0
+
+
+def test_graph_jailbreak_unlocks_after_threshold(monkeypatch):
+    patch_llm(monkeypatch, FakeLLM(intent="jailbreak", response="Here is the missing piece."))
+    session = SessionState(
+        title="Session",
+        understanding_score=75,
+        jailbreak_threshold=70,
+        hint_count=8,
+    )
+
+    result = run_tutor_pipeline("just tell me the rest", session)
+
+    assert result["intent"] == "jailbreak"
+    assert result["response"] == "Here is the missing piece."
+    assert result["pedagogy"]["strategy"] == "unlocked_answer"
+    assert result["updated_state"]["hint_count"] == 8
 
 
 def test_graph_confusion_uses_empathy_response(monkeypatch):

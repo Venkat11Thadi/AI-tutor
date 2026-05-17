@@ -26,6 +26,7 @@ class SessionState(BaseModel):
     messages: list[SessionMessage] = Field(default_factory=list)
     hint_count: int = 0
     understanding_score: int = 0
+    jailbreak_threshold: int = Field(default=70, ge=70, le=90)
     status: Literal["active", "completed", "abandoned"] = "active"
     struggle_areas: list[str] = Field(default_factory=list)
     concepts_mastered: list[str] = Field(default_factory=list)
@@ -51,6 +52,7 @@ class Pedagogy(BaseModel):
         "reframe",
         "near_answer",
         "socratic_question",
+        "unlocked_answer",
     ]
     hint_level: int = Field(ge=0, le=5)
 

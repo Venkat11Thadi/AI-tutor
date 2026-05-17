@@ -27,6 +27,10 @@ load_dotenv()
 MODEL = "llama-3.3-70b-versatile"
 
 
+def clamp_hint_level(value: int) -> int:
+    return max(0, min(value, 5))
+
+
 class GraphState(TypedDict, total=False):
     user_message: str
     conversation_history: list[dict[str, str]]
@@ -90,6 +94,7 @@ def decide_pedagogy(
     learning_state: LearningState, hint_level: int, struggle_areas: list[str]
 ) -> Pedagogy:
     del struggle_areas
+    hint_level = clamp_hint_level(hint_level)
     if learning_state == "mastered":
         return Pedagogy(strategy="celebrate", hint_level=hint_level)
     if learning_state == "deeply_struggling":
@@ -123,6 +128,9 @@ def classify_intent(state: GraphState) -> GraphState:
 def route_intent(state: GraphState) -> str:
     intent = state.get("intent", "learning")
     if intent == "jailbreak":
+        session_state = SessionState.model_validate(state["session_state"])
+        if session_state.understanding_score >= session_state.jailbreak_threshold:
+            return "unlocked_jailbreak"
         return "jailbreak"
     if intent == "confusion":
         return "confusion"
@@ -229,14 +237,43 @@ Rules:
 
 
 def generate_jailbreak_response(state: GraphState) -> GraphState:
-    del state
+    session_state = SessionState.model_validate(state["session_state"])
     return {
         "response": (
-            "I'm here to help you learn, not to hand you answers. The best learning happens "
-            "when you work through problems yourself. Try explaining what you do understand "
-            "about this, and we'll build from there."
+            "You're close, but not quite at your direct-answer threshold yet. Keep working "
+            f"through the idea until you reach {session_state.jailbreak_threshold}% understanding, "
+            "then I can fill in the remaining gaps directly. What part can you explain in "
+            "your own words right now?"
         ),
         "pedagogy": Pedagogy(strategy="blocked", hint_level=0).model_dump(),
+    }
+
+
+def generate_unlocked_jailbreak_response(state: GraphState) -> GraphState:
+    session_state = SessionState.model_validate(state["session_state"])
+    system_prompt = f"""You are SocraticCS. The student has reached the configured direct-answer threshold.
+They may now receive the remaining information directly.
+Topic: {state.get("topic") or session_state.topic or "CS/Programming"}
+Understanding score: {session_state.understanding_score}/100
+Known struggles: {", ".join(session_state.struggle_areas) or "none listed"}
+Concepts mastered: {", ".join(session_state.concepts_mastered) or "none listed"}
+Give a clear, complete answer to the student's latest request, fill likely missing gaps, and include a compact example if useful.
+Stay concise and educational."""
+    result = get_llm(temperature=0.6).invoke(
+        [
+            SystemMessage(content=system_prompt),
+            *message_history(state.get("conversation_history", [])),
+            HumanMessage(content=state["user_message"]),
+        ]
+    )
+    return {
+        "response": result.content,
+        "updated_state": session_state.model_dump(),
+        "pedagogy": Pedagogy(
+            strategy="unlocked_answer",
+            hint_level=clamp_hint_level(session_state.hint_count),
+        ).model_dump(),
+        "learning_state": "mastered",
     }
 
 
@@ -260,7 +297,7 @@ def generate_confusion_response(state: GraphState) -> GraphState:
         "response": result.content,
         "updated_state": session_state.model_dump(),
         "pedagogy": Pedagogy(
-            strategy="reframe", hint_level=session_state.hint_count
+            strategy="reframe", hint_level=clamp_hint_level(session_state.hint_count)
         ).model_dump(),
         "learning_state": "confused",
     }
@@ -273,10 +310,15 @@ def finalize(state: GraphState) -> GraphState:
     pedagogy = Pedagogy.model_validate(state["pedagogy"])
     topic = state.get("topic") or session_state.topic or "CS/Programming"
     hint_increment = 1 if state.get("intent") == "learning" else 0
+    displayed_hint = (
+        session_state.hint_count + hint_increment
+        if state.get("intent") == "learning"
+        else pedagogy.hint_level
+    )
     assistant_message = SessionMessage(
         role="assistant",
         content=state["response"],
-        hint_level=pedagogy.hint_level,
+        hint_level=displayed_hint,
         intent=state.get("intent"),
         timestamp=utc_timestamp(),
     )
@@ -309,6 +351,7 @@ def build_tutor_graph():
     graph.add_node("decide_pedagogy", decide_pedagogy_node)
     graph.add_node("generate_hint", generate_hint)
     graph.add_node("generate_jailbreak_response", generate_jailbreak_response)
+    graph.add_node("generate_unlocked_jailbreak_response", generate_unlocked_jailbreak_response)
     graph.add_node("generate_confusion_response", generate_confusion_response)
     graph.add_node("finalize", finalize)
 
@@ -318,6 +361,7 @@ def build_tutor_graph():
         route_intent,
         {
             "jailbreak": "generate_jailbreak_response",
+            "unlocked_jailbreak": "generate_unlocked_jailbreak_response",
             "confusion": "generate_confusion_response",
             "learning": "evaluate_understanding",
         },
@@ -328,6 +372,7 @@ def build_tutor_graph():
     graph.add_edge("decide_pedagogy", "generate_hint")
     graph.add_edge("generate_hint", "finalize")
     graph.add_edge("generate_jailbreak_response", "finalize")
+    graph.add_edge("generate_unlocked_jailbreak_response", "finalize")
     graph.add_edge("generate_confusion_response", "finalize")
     graph.add_edge("finalize", END)
     return graph.compile()
