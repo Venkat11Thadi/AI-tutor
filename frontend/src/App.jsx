@@ -7,7 +7,6 @@ import {
   MessageSquare,
   Plus,
   Send,
-  ShieldCheck,
   Sparkles,
   Target,
   TrendingUp,
@@ -177,15 +176,6 @@ function App() {
     });
   }
 
-  function updateJailbreakThreshold(value) {
-    const threshold = clampJailbreakThreshold(value);
-    updateActiveSession((session) => ({
-      ...session,
-      jailbreak_threshold: threshold,
-      updated_at: new Date().toISOString(),
-    }));
-  }
-
   async function handleSubmit(event) {
     event.preventDefault();
     const message = draft.trim();
@@ -323,7 +313,6 @@ function App() {
             isSending={isSending}
             error={error}
             messagesEndRef={messagesEndRef}
-            updateJailbreakThreshold={updateJailbreakThreshold}
           />
         ) : (
           <Dashboard
@@ -348,10 +337,7 @@ function ChatView({
   isSending,
   error,
   messagesEndRef,
-  updateJailbreakThreshold,
 }) {
-  const threshold = session.jailbreak_threshold ?? 70;
-
   return (
     <div className="chat-view">
       <header className="topbar">
@@ -363,20 +349,6 @@ function ChatView({
           </div>
         </div>
         <div className="topbar-tools">
-          <label className="threshold-control">
-            <span>
-              <ShieldCheck size={17} />
-              Direct answer at <strong>{threshold}%</strong>
-            </span>
-            <input
-              type="range"
-              min="70"
-              max="90"
-              step="5"
-              value={threshold}
-              onChange={(event) => updateJailbreakThreshold(event.target.value)}
-            />
-          </label>
           <div className="score-pill">
             <TrendingUp size={18} />
             <span>Understanding</span>

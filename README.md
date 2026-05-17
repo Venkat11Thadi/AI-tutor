@@ -2,6 +2,8 @@
 
 This project contains a Python LangGraph backend for the 8-step Socratic CS tutor pipeline.
 
+Detailed graph documentation lives in `docs/tutor-graph.md`.
+
 ## Setup
 
 ```powershell

@@ -1,3 +1,12 @@
+"""LangGraph implementation of the SocraticCS tutor pipeline.
+
+The graph handles one student turn at a time. It classifies the message,
+updates the student model when appropriate, chooses a pedagogy strategy, and
+returns both the assistant response and updated session state.
+
+See docs/tutor-graph.md for the full node-by-node explanation.
+"""
+
 from __future__ import annotations
 
 import os
@@ -28,6 +37,7 @@ MODEL = "llama-3.3-70b-versatile"
 
 
 def clamp_hint_level(value: int) -> int:
+    """Clamp pedagogy intensity to the validated 0-5 range."""
     return max(0, min(value, 5))
 
 
@@ -46,6 +56,7 @@ class GraphState(TypedDict, total=False):
 
 
 def get_llm(temperature: float = 0.7) -> ChatGroq:
+    """Create a Groq chat model using the backend-only API key."""
     api_key = os.getenv("GROQ_API_KEY") or os.getenv("groq_api_key")
     if not api_key:
         raise HTTPException(
@@ -62,6 +73,7 @@ def message_history(history: list[dict[str, str]]) -> list[HumanMessage]:
 def update_student_state(
     current_state: SessionState, evaluation: EvaluationResult, intent: Intent
 ) -> SessionState:
+    """Merge evaluator output into the persistent student model."""
     new_score = round((current_state.understanding_score * 0.6) + (evaluation.score * 0.4))
     struggle_areas = list(dict.fromkeys([*current_state.struggle_areas, *evaluation.gaps]))[:10]
     concepts_mastered = list(
@@ -79,6 +91,7 @@ def update_student_state(
 def detect_learning_state(
     state: SessionState, intent: Intent, hints_since_last_progress: int
 ) -> LearningState:
+    """Convert score, intent, and hint count into a coarse learning state."""
     if state.understanding_score >= 85:
         return "mastered"
     if hints_since_last_progress >= 4:
@@ -93,6 +106,7 @@ def detect_learning_state(
 def decide_pedagogy(
     learning_state: LearningState, hint_level: int, struggle_areas: list[str]
 ) -> Pedagogy:
+    """Choose the teaching strategy for the next assistant message."""
     del struggle_areas
     hint_level = clamp_hint_level(hint_level)
     if learning_state == "mastered":

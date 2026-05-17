@@ -259,32 +259,6 @@ p {
   border-radius: 16px;
 }
 
-.threshold-control {
-  display: grid;
-  gap: 8px;
-  min-width: 260px;
-  padding: 14px 16px;
-  color: #9eb7df;
-  background: #101829;
-  border: 1px solid #263957;
-  border-radius: 16px;
-}
-
-.threshold-control span {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-}
-
-.threshold-control strong {
-  color: #f8c66d;
-}
-
-.threshold-control input {
-  accent-color: #f8c66d;
-}
-
 .score-pill strong {
   color: #edf4ff;
   font-size: 18px;
@@ -823,10 +797,6 @@ time {
   }
 
   .score-pill {
-    min-width: 100%;
-  }
-
-  .threshold-control {
     min-width: 100%;
   }
 
