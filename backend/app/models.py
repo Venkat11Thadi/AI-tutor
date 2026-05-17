@@ -17,6 +17,8 @@ class SessionMessage(BaseModel):
     content: str
     hint_level: int | None = None
     intent: str | None = None
+    learning_state: str | None = None
+    strategy: str | None = None
     timestamp: str | None = None
 
 
@@ -59,17 +61,36 @@ class Pedagogy(BaseModel):
 
 class TutorMessageRequest(BaseModel):
     user_message: str
-    session_state: SessionState
+    session_state: SessionState | None = None
+    session_id: str | None = None
 
 
 class TutorMessageResponse(BaseModel):
     response: str
     intent: Intent
     updated_state: SessionState
+    session: dict[str, Any] | None = None
     pedagogy: Pedagogy
     evaluation: EvaluationResult | None = None
     learning_state: LearningState | None = None
     topic: str
+
+
+class AuthRequest(BaseModel):
+    email: str
+    password: str = Field(min_length=8)
+
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    created_at: str
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
 
 
 class TutorGraphState(BaseModel):

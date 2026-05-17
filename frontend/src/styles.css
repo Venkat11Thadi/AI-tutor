@@ -31,6 +31,7 @@ body {
 }
 
 button,
+input,
 textarea {
   font: inherit;
 }
@@ -38,6 +39,101 @@ textarea {
 button {
   border: 0;
   cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+input {
+  border: 0;
+}
+
+.auth-shell,
+.loading-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(180deg, rgba(17, 25, 43, 0.78), rgba(7, 10, 18, 0.98)),
+    #070a12;
+}
+
+.auth-panel,
+.loading-panel {
+  width: min(100%, 460px);
+  background: #0d1425;
+  border: 1px solid #263957;
+  border-radius: 8px;
+  padding: 34px;
+}
+
+.loading-panel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: #edf4ff;
+}
+
+.auth-brand {
+  margin-bottom: 34px;
+}
+
+.auth-copy h1 {
+  color: #edf4ff;
+  font-size: 28px;
+  line-height: 1.2;
+}
+
+.auth-copy p {
+  margin-top: 8px;
+  color: #89a6d0;
+}
+
+.auth-form {
+  display: grid;
+  gap: 18px;
+  margin-top: 28px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 8px;
+  color: #9fb6da;
+  font-weight: 700;
+}
+
+.auth-form input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  color: #e8eefc;
+  background: #101829;
+  border: 1px solid #263957;
+  border-radius: 8px;
+  outline: 0;
+}
+
+.auth-form input:focus {
+  border-color: #20dcc5;
+}
+
+.auth-submit {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.auth-submit:disabled {
+  opacity: 0.6;
+}
+
+.auth-switch {
+  width: 100%;
+  margin-top: 18px;
+  color: #20dcc5;
+  background: transparent;
+  font-weight: 800;
 }
 
 .app-shell {
@@ -104,6 +200,26 @@ button {
   display: grid;
   gap: 10px;
   margin: 44px 0 34px;
+}
+
+.user-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 22px;
+  padding: 12px;
+  color: #9fb6da;
+  background: #101827;
+  border: 1px solid #1f2e46;
+  border-radius: 8px;
+}
+
+.user-panel span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .nav-item {
@@ -339,52 +455,62 @@ p {
   white-space: pre-wrap;
 }
 
-.bubble-meta {
+.message-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
 }
 
-.hint-tag,
-.intent-tag,
+.hint-badge,
+.status-badge,
 .tag-list span,
 .dashboard-session em {
   border-radius: 8px;
-  padding: 5px 12px;
+  padding: 4px 10px;
   font-size: 13px;
   font-weight: 800;
   font-style: normal;
+  line-height: 1.2;
 }
 
-.hint-tag {
-  color: #d8e7ff;
-  background: #162238;
-  border: 1px solid #34486b;
+.hint-badge {
+  color: #7f9bc4;
+  background: transparent;
+  border: 0;
+  padding-inline: 0;
+  font-weight: 700;
 }
 
-.intent-tag.learning {
+.status-badge.learning {
   color: #26edd4;
   background: #062f31;
   border: 1px solid #0a817b;
 }
 
-.intent-tag.confusion {
+.status-badge.confusion {
   color: #f8c66d;
   background: #33250d;
   border: 1px solid #7d5b1f;
 }
 
-.intent-tag.jailbreak {
+.status-badge.jailbreak {
   color: #ff8290;
   background: #36141d;
   border: 1px solid #8b2e3b;
 }
 
-.intent-tag.unlocked_answer {
+.status-badge.unlocked {
   color: #b899ff;
   background: #241b3d;
   border: 1px solid #664ca8;
+}
+
+.status-badge.mastered {
+  color: #28f2d7;
+  background: #073b35;
+  border: 1px solid #14a396;
 }
 
 time {

@@ -4,6 +4,7 @@ import {
   BookOpen,
   BrainCircuit,
   Clock3,
+  LogOut,
   MessageSquare,
   Plus,
   Send,
@@ -13,9 +14,17 @@ import {
   Trash2,
   Zap,
 } from "lucide-react";
-import { runTutorPipeline } from "./lib/tutorApi";
+import {
+  createSession as createRemoteSession,
+  deleteSession as deleteRemoteSession,
+  fetchSessions,
+  getCurrentUser,
+  login,
+  register,
+  runTutorPipeline,
+} from "./lib/tutorApi";
 
-const STORAGE_KEY = "socraticcs_sessions_v1";
+const AUTH_TOKEN_KEY = "socraticcs_auth_token_v1";
 
 const WELCOME_MESSAGE = {
   role: "assistant",
@@ -43,7 +52,7 @@ function createSession() {
   };
 }
 
-function normalizeStoredSession(session) {
+function normalizeSession(session) {
   return {
     ...createSession(),
     ...session,
@@ -95,27 +104,23 @@ function normalizeSessionFromApi(previous, updatedState, firstUserMessage) {
 }
 
 function App() {
-  const [sessions, setSessions] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return [createSession()];
-    try {
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) && parsed.length
-        ? parsed.map(normalizeStoredSession)
-        : [createSession()];
-    } catch {
-      return [createSession()];
-    }
-  });
-  const [activeId, setActiveId] = useState(() => sessions[0]?.id);
+  const [token, setToken] = useState(() => localStorage.getItem(AUTH_TOKEN_KEY) || "");
+  const [user, setUser] = useState(null);
+  const [sessions, setSessions] = useState([]);
+  const [activeId, setActiveId] = useState("");
   const [view, setView] = useState("chat");
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(Boolean(token));
+  const [authMode, setAuthMode] = useState("login");
+  const [authForm, setAuthForm] = useState({ email: "", password: "" });
+  const [authError, setAuthError] = useState("");
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [error, setError] = useState("");
   const messagesEndRef = useRef(null);
 
   const activeSession = sessions.find((session) => session.id === activeId) || sessions[0];
-  const visibleMessages = activeSession.messages.length
+  const visibleMessages = activeSession?.messages?.length
     ? activeSession.messages
     : [WELCOME_MESSAGE];
 
@@ -137,58 +142,135 @@ function App() {
   }, [sessions]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-  }, [sessions]);
+    if (!token) {
+      setIsLoadingSessions(false);
+      return;
+    }
+
+    let ignore = false;
+    async function loadAccount() {
+      setIsLoadingSessions(true);
+      try {
+        const [profile, remoteSessions] = await Promise.all([
+          getCurrentUser(token),
+          fetchSessions(token),
+        ]);
+        if (ignore) return;
+        let nextSessions = remoteSessions.map(normalizeSession);
+        if (!nextSessions.length) {
+          const created = await createRemoteSession(token);
+          if (ignore) return;
+          nextSessions = [normalizeSession(created)];
+        }
+        setUser(profile);
+        setSessions(nextSessions);
+        setActiveId(nextSessions[0]?.id || "");
+        setError("");
+      } catch (err) {
+        if (ignore) return;
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+        setToken("");
+        setUser(null);
+        setSessions([]);
+        setActiveId("");
+        setAuthError(err.message || "Please sign in again.");
+      } finally {
+        if (!ignore) setIsLoadingSessions(false);
+      }
+    }
+
+    loadAccount();
+    return () => {
+      ignore = true;
+    };
+  }, [token]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [activeSession.messages.length, isSending]);
+  }, [activeSession?.messages?.length, isSending]);
 
   function updateActiveSession(updater) {
     setSessions((current) =>
-      current.map((session) => (session.id === activeSession.id ? updater(session) : session))
+      current.map((session) => (session.id === activeSession?.id ? updater(session) : session))
     );
   }
 
-  function startNewSession() {
-    const session = createSession();
-    setSessions((current) => [session, ...current]);
-    setActiveId(session.id);
-    setView("chat");
+  async function handleAuthSubmit(event) {
+    event.preventDefault();
+    setAuthError("");
+    setIsAuthLoading(true);
+    try {
+      const action = authMode === "register" ? register : login;
+      const result = await action(authForm);
+      localStorage.setItem(AUTH_TOKEN_KEY, result.access_token);
+      setToken(result.access_token);
+      setUser(result.user);
+      setAuthForm({ email: "", password: "" });
+    } catch (err) {
+      setAuthError(err.message || "Authentication failed.");
+    } finally {
+      setIsAuthLoading(false);
+    }
+  }
+
+  function handleLogout() {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    setToken("");
+    setUser(null);
+    setSessions([]);
+    setActiveId("");
     setDraft("");
     setError("");
   }
 
-  function deleteSession(sessionId) {
+  async function startNewSession() {
+    if (!token) return;
+    setError("");
+    try {
+      const session = normalizeSession(await createRemoteSession(token));
+      setSessions((current) => [session, ...current]);
+      setActiveId(session.id);
+      setView("chat");
+      setDraft("");
+    } catch (err) {
+      setError(err.message || "Could not create a session.");
+    }
+  }
+
+  async function deleteSession(sessionId) {
+    if (!token) return;
+    const previousSessions = sessions;
+    await deleteRemoteSession(token, sessionId).catch((err) => {
+      setError(err.message || "Could not delete the session.");
+      throw err;
+    });
+
     setSessions((current) => {
       const next = current.filter((session) => session.id !== sessionId);
-      if (!next.length) {
-        const replacement = createSession();
-        setActiveId(replacement.id);
-        setView("chat");
-        return [replacement];
-      }
       if (sessionId === activeId) {
-        setActiveId(next[0].id);
+        setActiveId(next[0]?.id || "");
         setView("chat");
       }
       return next;
     });
+
+    if (previousSessions.length === 1) {
+      const replacement = normalizeSession(await createRemoteSession(token));
+      setSessions([replacement]);
+      setActiveId(replacement.id);
+      setView("chat");
+    }
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
     const message = draft.trim();
-    if (!message || isSending) return;
+    if (!message || isSending || !activeSession || !token) return;
 
     const userMessage = {
       role: "user",
       content: message,
       timestamp: new Date().toISOString(),
-    };
-    const sessionForApi = {
-      ...activeSession,
-      messages: [...activeSession.messages, userMessage],
     };
 
     setDraft("");
@@ -204,13 +286,14 @@ function App() {
     try {
       const result = await runTutorPipeline({
         userMessage: message,
-        sessionState: sessionForApi,
+        sessionId: activeSession.id,
+        token,
       });
 
       setSessions((current) =>
         current.map((session) =>
           session.id === activeSession.id
-            ? normalizeSessionFromApi(session, result.updatedState, message)
+            ? normalizeSession(result.session || normalizeSessionFromApi(session, result.updatedState, message))
             : session
         )
       );
@@ -240,6 +323,46 @@ function App() {
     }
   }
 
+  if (token && isLoadingSessions && !user) {
+    return (
+      <div className="app-shell loading-shell">
+        <div className="loading-panel">
+          <span className="brand-mark">
+            <BrainCircuit size={24} />
+          </span>
+          <strong>Loading your SocraticCS workspace...</strong>
+        </div>
+      </div>
+    );
+  }
+
+  if (!token || !user) {
+    return (
+      <AuthView
+        mode={authMode}
+        setMode={setAuthMode}
+        form={authForm}
+        setForm={setAuthForm}
+        error={authError}
+        isLoading={isAuthLoading}
+        onSubmit={handleAuthSubmit}
+      />
+    );
+  }
+
+  if (isLoadingSessions || !activeSession) {
+    return (
+      <div className="app-shell loading-shell">
+        <div className="loading-panel">
+          <span className="brand-mark">
+            <BrainCircuit size={24} />
+          </span>
+          <strong>Loading your SocraticCS workspace...</strong>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -252,6 +375,12 @@ function App() {
             <small>AI Tutor</small>
           </span>
         </button>
+        <div className="user-panel">
+          <span>{user.email}</span>
+          <button className="icon-button" type="button" aria-label="Sign out" onClick={handleLogout}>
+            <LogOut size={16} />
+          </button>
+        </div>
 
         <nav className="nav-stack" aria-label="Main navigation">
           <button className={view === "chat" ? "nav-item active" : "nav-item"} onClick={startNewSession}>
@@ -324,6 +453,67 @@ function App() {
         )}
       </main>
     </div>
+  );
+}
+
+function AuthView({ mode, setMode, form, setForm, error, isLoading, onSubmit }) {
+  const isRegistering = mode === "register";
+
+  return (
+    <main className="auth-shell">
+      <section className="auth-panel">
+        <div className="brand auth-brand">
+          <span className="brand-mark">
+            <BrainCircuit size={24} />
+          </span>
+          <span>
+            <strong>SocraticCS</strong>
+            <small>AI Tutor</small>
+          </span>
+        </div>
+
+        <div className="auth-copy">
+          <h1>{isRegistering ? "Create your account" : "Welcome back"}</h1>
+          <p>{isRegistering ? "Save every session as you learn." : "Continue from your saved sessions."}</p>
+        </div>
+
+        <form className="auth-form" onSubmit={onSubmit}>
+          {error && <div className="error-banner">{error}</div>}
+          <label>
+            <span>Email</span>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+              autoComplete="email"
+              required
+            />
+          </label>
+          <label>
+            <span>Password</span>
+            <input
+              type="password"
+              value={form.password}
+              onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+              autoComplete={isRegistering ? "new-password" : "current-password"}
+              minLength={8}
+              required
+            />
+          </label>
+          <button className="primary-action auth-submit" type="submit" disabled={isLoading}>
+            {isLoading ? "Working..." : isRegistering ? "Register" : "Login"}
+          </button>
+        </form>
+
+        <button
+          className="auth-switch"
+          type="button"
+          onClick={() => setMode(isRegistering ? "login" : "register")}
+        >
+          {isRegistering ? "Already have an account? Login" : "Need an account? Register"}
+        </button>
+      </section>
+    </main>
   );
 }
 
@@ -404,6 +594,7 @@ function ChatView({
 
 function MessageBubble({ message }) {
   const isUser = message.role === "user";
+  const status = getAssistantStatus(message);
   return (
     <article className={isUser ? "message-line user" : "message-line assistant"}>
       {!isUser && (
@@ -412,19 +603,38 @@ function MessageBubble({ message }) {
         </div>
       )}
       <div>
+        {!isUser && status && (
+          <div className="message-badges">
+            <span className={`status-badge ${status.className}`}>{status.label}</span>
+            <span className="hint-badge">hint {message.hint_level ?? 0}/5</span>
+          </div>
+        )}
         <div className="bubble">
           <p>{message.content}</p>
-          {!isUser && message.intent && message.intent !== "welcome" && (
-            <div className="bubble-meta">
-              <span className={`intent-tag ${message.intent}`}>{message.intent}</span>
-              <span className="hint-tag">hint {message.hint_level ?? 0}</span>
-            </div>
-          )}
         </div>
         <time>{formatTime(message.timestamp)}</time>
       </div>
     </article>
   );
+}
+
+function getAssistantStatus(message) {
+  if (!message.intent || message.intent === "welcome") return null;
+  if (message.learning_state === "mastered" || message.strategy === "celebrate") {
+    return { label: "Mastered!", className: "mastered" };
+  }
+  if (message.strategy === "unlocked_answer") {
+    return { label: "Unlocked", className: "unlocked" };
+  }
+  const labels = {
+    learning: "Learning",
+    confusion: "Confusion",
+    jailbreak: "Jailbreak",
+  };
+  return {
+    label: labels[message.intent] || message.intent,
+    className: message.intent,
+  };
 }
 
 function Dashboard({ sessions, stats, startNewSession, deleteSession }) {

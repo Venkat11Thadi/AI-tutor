@@ -334,6 +334,8 @@ def finalize(state: GraphState) -> GraphState:
         content=state["response"],
         hint_level=displayed_hint,
         intent=state.get("intent"),
+        learning_state=state.get("learning_state"),
+        strategy=pedagogy.strategy,
         timestamp=utc_timestamp(),
     )
     messages = list(session_state.messages)

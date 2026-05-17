@@ -2,6 +2,7 @@ import os
 
 from fastapi.testclient import TestClient
 
+from backend.app import db
 from backend.app.main import app
 from backend.app.models import EvaluationResult, IntentResult, SessionState
 from backend.app import tutor_graph
@@ -205,6 +206,85 @@ def test_api_valid_session_request_returns_updated_state(monkeypatch):
     body = response.json()
     assert body["response"] == "What index changes first?"
     assert body["updated_state"]["hint_count"] == 1
+
+
+def test_auth_preflight_allows_localhost_frontend():
+    client = TestClient(app)
+
+    response = client.options(
+        "/api/auth/login",
+        headers={
+            "Origin": "http://127.0.0.1:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+
+
+def test_auth_register_login_and_session_crud(monkeypatch, tmp_path):
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "auth.sqlite3")
+    client = TestClient(app)
+
+    registered = client.post(
+        "/api/auth/register",
+        json={"email": "student@example.com", "password": "password123"},
+    )
+
+    assert registered.status_code == 200
+    token = registered.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    assert client.get("/api/auth/me", headers=headers).json()["email"] == "student@example.com"
+
+    logged_in = client.post(
+        "/api/auth/login",
+        json={"email": "student@example.com", "password": "password123"},
+    )
+    assert logged_in.status_code == 200
+
+    created = client.post("/api/sessions", headers=headers)
+    assert created.status_code == 200
+    session_id = created.json()["id"]
+
+    listed = client.get("/api/sessions", headers=headers)
+    assert listed.status_code == 200
+    assert [session["id"] for session in listed.json()] == [session_id]
+
+    deleted = client.delete(f"/api/sessions/{session_id}", headers=headers)
+    assert deleted.status_code == 204
+    assert client.get("/api/sessions", headers=headers).json() == []
+
+
+def test_authenticated_message_persists_session(monkeypatch, tmp_path):
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "message.sqlite3")
+    os.environ["GROQ_API_KEY"] = "test-key"
+    patch_llm(monkeypatch, FakeLLM(intent="learning", response="What changes each loop?"))
+    client = TestClient(app)
+
+    registered = client.post(
+        "/api/auth/register",
+        json={"email": "learner@example.com", "password": "password123"},
+    )
+    headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
+    session_id = client.post("/api/sessions", headers=headers).json()["id"]
+
+    response = client.post(
+        "/api/tutor/message",
+        headers=headers,
+        json={"user_message": "Explain loops", "session_id": session_id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["session"]["id"] == session_id
+    assert body["session"]["title"] == "Explain loops"
+    assert [message["role"] for message in body["session"]["messages"]] == ["user", "assistant"]
+
+    persisted = client.get(f"/api/sessions/{session_id}", headers=headers).json()
+    assert persisted["messages"][1]["content"] == "What changes each loop?"
 
 
 def test_malformed_model_json_falls_back_safely(monkeypatch):
