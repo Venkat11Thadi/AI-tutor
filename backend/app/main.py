@@ -24,20 +24,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Zephyr Assist Tutor API", lifespan=lifespan)
 bearer_scheme = HTTPBearer(auto_error=False)
 
-# Build allowed origins — always include localhost for development,
-# and add the production frontend URL from the environment if set.
-_cors_origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
-_frontend_url = os.getenv("FRONTEND_URL")
-if _frontend_url:
-    _cors_origins.append(_frontend_url.rstrip("/"))
+# Build allowed origins — allow all origins for public API access
+# since we use header-based JWT authentication and no session cookies.
+_cors_origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["Authorization", "Content-Type", "X-Groq-Api-Key"],
