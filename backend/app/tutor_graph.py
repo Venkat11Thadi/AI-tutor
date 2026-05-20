@@ -53,17 +53,18 @@ class GraphState(TypedDict, total=False):
     pedagogy: dict[str, Any] | Pedagogy
     response: str
     updated_state: dict[str, Any] | SessionState
+    groq_api_key: str
 
 
-def get_llm(temperature: float = 0.7) -> ChatGroq:
-    """Create a Groq chat model using the backend-only API key."""
-    api_key = os.getenv("GROQ_API_KEY") or os.getenv("groq_api_key")
-    if not api_key:
+def get_llm(api_key: str | None = None, temperature: float = 0.7) -> ChatGroq:
+    """Create a Groq chat model using the custom or backend-only API key."""
+    actual_key = api_key or os.getenv("GROQ_API_KEY") or os.getenv("groq_api_key")
+    if not actual_key:
         raise HTTPException(
-            status_code=500,
-            detail="GROQ_API_KEY is not configured on the backend.",
+            status_code=400,
+            detail="Groq API key is missing. Please configure GROQ_API_KEY on the server or supply your own key in settings.",
         )
-    return ChatGroq(model_name=MODEL, temperature=temperature, api_key=api_key)
+    return ChatGroq(model_name=MODEL, temperature=temperature, api_key=actual_key)
 
 
 def message_history(history: list[dict[str, str]]) -> list[HumanMessage]:
@@ -132,9 +133,14 @@ def classify_intent(state: GraphState) -> GraphState:
         HumanMessage(content=state["user_message"]),
     ]
     try:
-        llm = get_llm(temperature=0.2).with_structured_output(IntentResult)
+        llm = get_llm(state.get("groq_api_key"), temperature=0.2).with_structured_output(IntentResult)
         result = llm.invoke(messages)
-    except Exception:
+    except HTTPException:
+        raise
+    except Exception as e:
+        err_msg = str(e).lower()
+        if any(term in err_msg for term in ["api_key", "api key", "unauthorized", "authentication", "forbidden", "invalid_api_key"]):
+            raise HTTPException(status_code=401, detail="Invalid Groq API Key. Please check your credentials.")
         result = IntentResult(intent="learning", reason="parse fallback")
     return {"intent": result.intent, "intent_reason": result.reason}
 
@@ -164,9 +170,14 @@ def evaluate_understanding(state: GraphState) -> GraphState:
         HumanMessage(content=f"Student's latest message: {state['user_message']}"),
     ]
     try:
-        llm = get_llm(temperature=0.3).with_structured_output(EvaluationResult)
+        llm = get_llm(state.get("groq_api_key"), temperature=0.3).with_structured_output(EvaluationResult)
         result = llm.invoke(messages)
-    except Exception:
+    except HTTPException:
+        raise
+    except Exception as e:
+        err_msg = str(e).lower()
+        if any(term in err_msg for term in ["api_key", "api key", "unauthorized", "authentication", "forbidden", "invalid_api_key"]):
+            raise HTTPException(status_code=401, detail="Invalid Groq API Key. Please check your credentials.")
         result = EvaluationResult(
             score=30,
             reasoning="unclear",
@@ -228,7 +239,7 @@ def generate_hint(state: GraphState) -> GraphState:
             "summarize what they learned, and suggest a related concept to explore next."
         ),
     }
-    system_prompt = f"""You are SocraticCS, an expert CS tutor. Your role is Socratic: guide students to discover answers themselves.
+    system_prompt = f"""You are Zephyr Assist, an expert CS tutor. Your role is Socratic: guide students to discover answers themselves.
 Current strategy: {strategy_prompts[pedagogy.strategy]}
 Hint level: {pedagogy.hint_level}/5
 Student understanding score: {updated_state.understanding_score}/100
@@ -240,7 +251,7 @@ Rules:
 - Use code snippets only when essential for clarity
 - End with a question to keep the student engaged
 - Be encouraging and supportive"""
-    result = get_llm(temperature=0.7).invoke(
+    result = get_llm(state.get("groq_api_key"), temperature=0.7).invoke(
         [
             SystemMessage(content=system_prompt),
             *message_history(state.get("conversation_history", [])),
@@ -265,7 +276,7 @@ def generate_jailbreak_response(state: GraphState) -> GraphState:
 
 def generate_unlocked_jailbreak_response(state: GraphState) -> GraphState:
     session_state = SessionState.model_validate(state["session_state"])
-    system_prompt = f"""You are SocraticCS. The student has reached the configured direct-answer threshold.
+    system_prompt = f"""You are Zephyr Assist. The student has reached the configured direct-answer threshold.
 They may now receive the remaining information directly.
 Topic: {state.get("topic") or session_state.topic or "CS/Programming"}
 Understanding score: {session_state.understanding_score}/100
@@ -273,7 +284,7 @@ Known struggles: {", ".join(session_state.struggle_areas) or "none listed"}
 Concepts mastered: {", ".join(session_state.concepts_mastered) or "none listed"}
 Give a clear, complete answer to the student's latest request, fill likely missing gaps, and include a compact example if useful.
 Stay concise and educational."""
-    result = get_llm(temperature=0.6).invoke(
+    result = get_llm(state.get("groq_api_key"), temperature=0.6).invoke(
         [
             SystemMessage(content=system_prompt),
             *message_history(state.get("conversation_history", [])),
@@ -292,11 +303,11 @@ Stay concise and educational."""
 
 
 def generate_confusion_response(state: GraphState) -> GraphState:
-    result = get_llm(temperature=0.6).invoke(
+    result = get_llm(state.get("groq_api_key"), temperature=0.6).invoke(
         [
             SystemMessage(
                 content=(
-                    "You are SocraticCS. The student seems confused or frustrated. Be "
+                    "You are Zephyr Assist. The student seems confused or frustrated. Be "
                     "empathetic and supportive. Break down the problem into the smallest "
                     "possible first step. Ask one very simple, clear question to rebuild "
                     "their confidence. Keep it brief and warm."
@@ -397,7 +408,15 @@ def build_tutor_graph():
 tutor_graph = build_tutor_graph()
 
 
-def run_tutor_pipeline(user_message: str, session_state: SessionState) -> dict[str, Any]:
+def run_tutor_pipeline(user_message: str, session_state: SessionState, groq_api_key: str | None = None) -> dict[str, Any]:
+    # Validate API key exists at entry point
+    api_key = groq_api_key or os.getenv("GROQ_API_KEY") or os.getenv("groq_api_key")
+    if not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Groq API key is missing. Please configure GROQ_API_KEY on the server or supply your own key in settings.",
+        )
+    
     topic = detect_topic(user_message) if session_state.topic == "CS/Programming" else session_state.topic
     history = [
         {"role": message.role, "content": message.content}
@@ -408,6 +427,7 @@ def run_tutor_pipeline(user_message: str, session_state: SessionState) -> dict[s
         conversation_history=history,
         session_state=session_state,
         topic=topic,
+        groq_api_key=groq_api_key,
     )
     result = tutor_graph.invoke(graph_state.as_graph_input())
     return {

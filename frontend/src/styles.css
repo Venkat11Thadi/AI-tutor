@@ -119,6 +119,32 @@ input {
   border-color: #20dcc5;
 }
 
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 44px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0;
+  background: none;
+  color: #556a8a;
+  opacity: 0.6;
+  transition: opacity 0.15s, color 0.15s;
+  line-height: 0;
+}
+
+.password-toggle:hover {
+  opacity: 1;
+  color: #9fb6da;
+}
+
 .auth-submit {
   width: 100%;
   margin-top: 4px;
@@ -976,3 +1002,125 @@ time {
     display: none;
   }
 }
+
+/* API Settings Page */
+.settings-view {
+  height: 100vh;
+  overflow-y: auto;
+  padding-bottom: 48px;
+}
+
+.settings-content {
+  max-width: 800px;
+  margin: 36px auto;
+  padding: 0 48px;
+}
+
+.settings-card {
+  background: #0d1425;
+  border: 1px solid #263957;
+  border-radius: 16px;
+  padding: 36px;
+}
+
+.settings-card h2 {
+  color: #edf4ff;
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+
+.settings-description {
+  color: #89a6d0;
+  font-size: 15px;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.settings-form {
+  display: grid;
+  gap: 20px;
+}
+
+.settings-label {
+  display: grid;
+  gap: 8px;
+  color: #9fb6da;
+  font-weight: 700;
+}
+
+.settings-form input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  color: #e8eefc;
+  background: #101829;
+  border: 1px solid #263957;
+  border-radius: 8px;
+  outline: 0;
+  font-size: 16px;
+}
+
+.settings-form input:focus {
+  border-color: #20dcc5;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 22px;
+  font-size: 16px;
+  border-radius: 8px;
+  font-weight: 800;
+  color: #ff9ba6;
+  border: 1px solid #8b2e3b;
+  background: #2c121b;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.secondary-action:hover {
+  background: #3f1925;
+  border-color: #aa3d4c;
+}
+
+.warning-banner {
+  padding: 14px 18px;
+  color: #ffe699;
+  background: #29210e;
+  border: 1px solid #6b531e;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.success-banner {
+  padding: 12px 16px;
+  color: #d9ffec;
+  background: #122b1e;
+  border: 1px solid #266d43;
+  border-radius: 8px;
+  font-size: 15px;
+}
+
+.settings-link {
+  color: #20dcc5;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.15s;
+}
+
+.settings-link:hover {
+  color: #17b3a0;
+  text-decoration: underline;
+}
+
+

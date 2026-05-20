@@ -56,9 +56,19 @@ export async function runTutorPipeline({ userMessage, sessionState, sessionId, t
     ? { user_message: userMessage, session_id: sessionId }
     : { user_message: userMessage, session_state: sessionState };
 
+  const headers = {
+    "Content-Type": "application/json",
+    ...authHeaders(token),
+  };
+
+  const customKey = localStorage.getItem("socraticcs_groq_api_key");
+  if (customKey) {
+    headers["X-Groq-Api-Key"] = customKey;
+  }
+
   const res = await fetch(`${API_BASE_URL}/api/tutor/message`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    headers,
     body: JSON.stringify(body),
   });
 

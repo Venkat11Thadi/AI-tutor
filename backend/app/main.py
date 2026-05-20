@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="SocraticCS Tutor API", lifespan=lifespan)
+app = FastAPI(title="Zephyr Assist Tutor API", lifespan=lifespan)
 bearer_scheme = HTTPBearer(auto_error=False)
 
 app.add_middleware(
@@ -126,6 +126,7 @@ def delete_session(session_id: str, user: dict = Depends(current_user)) -> None:
 def tutor_message(
     request: TutorMessageRequest,
     user: dict | None = Depends(optional_current_user),
+    x_groq_api_key: str | None = Header(None, alias="X-Groq-Api-Key"),
 ) -> dict:
     if request.session_id:
         if user is None:
@@ -143,6 +144,7 @@ def tutor_message(
         result = run_tutor_pipeline(
             user_message=request.user_message,
             session_state=session_state,
+            groq_api_key=x_groq_api_key,
         )
         updated_state = SessionState.model_validate(result["updated_state"])
         saved_session = db.save_session_state(user["id"], request.session_id, updated_state)
@@ -155,4 +157,5 @@ def tutor_message(
     return run_tutor_pipeline(
         user_message=request.user_message,
         session_state=request.session_state,
+        groq_api_key=x_groq_api_key,
     )

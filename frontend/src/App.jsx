@@ -4,6 +4,9 @@ import {
   BookOpen,
   BrainCircuit,
   Clock3,
+  Eye,
+  EyeOff,
+  Key,
   LogOut,
   MessageSquare,
   Plus,
@@ -29,7 +32,7 @@ const AUTH_TOKEN_KEY = "socraticcs_auth_token_v1";
 const WELCOME_MESSAGE = {
   role: "assistant",
   content:
-    "Welcome to SocraticCS. I am your AI tutor for programming and computer science. My job is to help you discover the answer, not simply hand it over. Ask a CS question or share a problem you are stuck on, and I will guide you with focused hints.",
+    "Welcome to Zephyr Assist. I am your AI tutor for programming and computer science. My job is to help you discover the answer, not simply hand it over. Ask a CS question or share a problem you are stuck on, and I will guide you with focused hints.",
   hint_level: 0,
   intent: "welcome",
   timestamp: new Date().toISOString(),
@@ -108,7 +111,9 @@ function App() {
   const [user, setUser] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [activeId, setActiveId] = useState("");
-  const [view, setView] = useState("chat");
+  const [view, setView] = useState(() =>
+    localStorage.getItem("socraticcs_groq_api_key") ? "chat" : "settings"
+  );
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isLoadingSessions, setIsLoadingSessions] = useState(Boolean(token));
@@ -166,6 +171,9 @@ function App() {
         setSessions(nextSessions);
         setActiveId(nextSessions[0]?.id || "");
         setError("");
+        if (!localStorage.getItem("socraticcs_groq_api_key")) {
+          setView("settings");
+        }
       } catch (err) {
         if (ignore) return;
         localStorage.removeItem(AUTH_TOKEN_KEY);
@@ -206,6 +214,11 @@ function App() {
       setToken(result.access_token);
       setUser(result.user);
       setAuthForm({ email: "", password: "" });
+      if (!localStorage.getItem("socraticcs_groq_api_key")) {
+        setView("settings");
+      } else {
+        setView("chat");
+      }
     } catch (err) {
       setAuthError(err.message || "Authentication failed.");
     } finally {
@@ -225,6 +238,11 @@ function App() {
 
   async function startNewSession() {
     if (!token) return;
+    if (!localStorage.getItem("socraticcs_groq_api_key")) {
+      setView("settings");
+      setError("Please configure your Groq API Key first.");
+      return;
+    }
     setError("");
     try {
       const session = normalizeSession(await createRemoteSession(token));
@@ -266,6 +284,12 @@ function App() {
     event.preventDefault();
     const message = draft.trim();
     if (!message || isSending || !activeSession || !token) return;
+
+    if (!localStorage.getItem("socraticcs_groq_api_key")) {
+      setView("settings");
+      setError("Please configure your Groq API Key first.");
+      return;
+    }
 
     const userMessage = {
       role: "user",
@@ -311,6 +335,9 @@ function App() {
       );
       setDraft(message);
       setError(err.message || "Could not reach the tutor API.");
+      if (err.message && (err.message.includes("Groq API key") || err.message.includes("api_key") || err.message.includes("API Key") || err.message.includes("API key"))) {
+        setView("settings");
+      }
     } finally {
       setIsSending(false);
     }
@@ -330,7 +357,7 @@ function App() {
           <span className="brand-mark">
             <BrainCircuit size={24} />
           </span>
-          <strong>Loading your SocraticCS workspace...</strong>
+          <strong>Loading your Zephyr Assist workspace...</strong>
         </div>
       </div>
     );
@@ -357,7 +384,7 @@ function App() {
           <span className="brand-mark">
             <BrainCircuit size={24} />
           </span>
-          <strong>Loading your SocraticCS workspace...</strong>
+          <strong>Loading your Zephyr Assist workspace...</strong>
         </div>
       </div>
     );
@@ -371,7 +398,7 @@ function App() {
             <BrainCircuit size={24} />
           </span>
           <span>
-            <strong>SocraticCS</strong>
+            <strong>Zephyr Assist</strong>
             <small>AI Tutor</small>
           </span>
         </button>
@@ -383,16 +410,40 @@ function App() {
         </div>
 
         <nav className="nav-stack" aria-label="Main navigation">
-          <button className={view === "chat" ? "nav-item active" : "nav-item"} onClick={startNewSession}>
+          <button 
+            className={view === "chat" ? "nav-item active" : "nav-item"} 
+            onClick={() => {
+              if (!localStorage.getItem("socraticcs_groq_api_key")) {
+                setView("settings");
+                setError("Please configure your Groq API Key first.");
+              } else {
+                startNewSession();
+              }
+            }}
+          >
             <Plus size={19} />
             New Session
           </button>
           <button
             className={view === "dashboard" ? "nav-item active" : "nav-item"}
-            onClick={() => setView("dashboard")}
+            onClick={() => {
+              if (!localStorage.getItem("socraticcs_groq_api_key")) {
+                setView("settings");
+                setError("Please configure your Groq API Key first.");
+              } else {
+                setView("dashboard");
+              }
+            }}
           >
             <BarChart3 size={19} />
             Progress Dashboard
+          </button>
+          <button
+            className={view === "settings" ? "nav-item active" : "nav-item"}
+            onClick={() => setView("settings")}
+          >
+            <Key size={19} />
+            API Settings
           </button>
         </nav>
 
@@ -407,8 +458,13 @@ function App() {
                 className="session-open"
                 type="button"
                 onClick={() => {
-                  setActiveId(session.id);
-                  setView("chat");
+                  if (!localStorage.getItem("socraticcs_groq_api_key")) {
+                    setView("settings");
+                    setError("Please configure your Groq API Key first.");
+                  } else {
+                    setActiveId(session.id);
+                    setView("chat");
+                  }
                 }}
               >
                 <MessageSquare size={17} />
@@ -443,13 +499,15 @@ function App() {
             error={error}
             messagesEndRef={messagesEndRef}
           />
-        ) : (
+        ) : view === "dashboard" ? (
           <Dashboard
             sessions={sessions}
             stats={stats}
             startNewSession={startNewSession}
             deleteSession={deleteSession}
           />
+        ) : (
+          <SettingsView onKeySaved={() => setView("chat")} />
         )}
       </main>
     </div>
@@ -458,6 +516,7 @@ function App() {
 
 function AuthView({ mode, setMode, form, setForm, error, isLoading, onSubmit }) {
   const isRegistering = mode === "register";
+  const [showPassword, setShowPassword] = useState(false);
 
   return (
     <main className="auth-shell">
@@ -467,7 +526,7 @@ function AuthView({ mode, setMode, form, setForm, error, isLoading, onSubmit }) 
             <BrainCircuit size={24} />
           </span>
           <span>
-            <strong>SocraticCS</strong>
+            <strong>Zephyr Assist</strong>
             <small>AI Tutor</small>
           </span>
         </div>
@@ -491,14 +550,25 @@ function AuthView({ mode, setMode, form, setForm, error, isLoading, onSubmit }) 
           </label>
           <label>
             <span>Password</span>
-            <input
-              type="password"
-              value={form.password}
-              onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-              autoComplete={isRegistering ? "new-password" : "current-password"}
-              minLength={8}
-              required
-            />
+            <div className="password-field">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={form.password}
+                onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                autoComplete={isRegistering ? "new-password" : "current-password"}
+                minLength={8}
+                required
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </label>
           <button className="primary-action auth-submit" type="submit" disabled={isLoading}>
             {isLoading ? "Working..." : isRegistering ? "Register" : "Login"}
@@ -651,7 +721,7 @@ function Dashboard({ sessions, stats, startNewSession, deleteSession }) {
           <span className="brand-mark">
             <BrainCircuit size={24} />
           </span>
-          <strong>SocraticCS</strong>
+          <strong>Zephyr Assist</strong>
           <span>/</span>
           <p>Progress Dashboard</p>
         </div>
@@ -768,6 +838,108 @@ function TagList({ values, empty, tone }) {
       {values.map((value) => (
         <span key={value}>{value}</span>
       ))}
+    </div>
+  );
+}
+
+function SettingsView({ onKeySaved }) {
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem("socraticcs_groq_api_key") || "");
+  const [showKey, setShowKey] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  function handleSave(e) {
+    e.preventDefault();
+    const trimmed = apiKey.trim();
+    if (trimmed) {
+      localStorage.setItem("socraticcs_groq_api_key", trimmed);
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setSaveSuccess(false);
+        if (onKeySaved) {
+          onKeySaved();
+        }
+      }, 1000);
+    }
+  }
+
+  function handleClear() {
+    localStorage.removeItem("socraticcs_groq_api_key");
+    setApiKey("");
+    setSaveSuccess(false);
+  }
+
+  return (
+    <div className="settings-view">
+      <header className="dashboard-header">
+        <div className="brand-inline">
+          <span className="brand-mark">
+            <Key size={24} />
+          </span>
+          <strong>Zephyr Assist</strong>
+          <span>/</span>
+          <p>API Settings</p>
+        </div>
+      </header>
+
+      <div className="settings-content">
+        <section className="settings-card">
+          <h2>Groq API Configuration</h2>
+          <p className="settings-description">
+            To use this tutoring workspace, you need a Groq API Key. 
+            If you are running the application without a pre-configured server-side key, or if you want to use your own quota, enter your key below.
+            You can generate or retrieve your key from the{" "}
+            <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="settings-link">
+              Groq Console
+            </a>.
+          </p>
+
+          {!localStorage.getItem("socraticcs_groq_api_key") && (
+            <div className="warning-banner">
+              <strong>Notice:</strong> Please enter a valid Groq API Key to enable chat sessions.
+            </div>
+          )}
+
+          <form onSubmit={handleSave} className="settings-form">
+            <label className="settings-label">
+              <span>Groq API Key</span>
+              <div className="password-field">
+                <input
+                  type={showKey ? "text" : "password"}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="gsk_..."
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowKey(!showKey)}
+                  aria-label={showKey ? "Hide key" : "Show key"}
+                >
+                  {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </label>
+
+            {saveSuccess && (
+              <div className="success-banner">
+                API Key saved successfully!
+              </div>
+            )}
+
+            <div className="settings-actions">
+              <button type="submit" className="primary-action">
+                Save Key
+              </button>
+              {localStorage.getItem("socraticcs_groq_api_key") && (
+                <button type="button" onClick={handleClear} className="secondary-action">
+                  Clear Key
+                </button>
+              )}
+            </div>
+          </form>
+        </section>
+      </div>
     </div>
   );
 }

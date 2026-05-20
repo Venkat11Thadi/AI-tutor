@@ -52,7 +52,7 @@ class FakeLLM:
 
 
 def patch_llm(monkeypatch, fake):
-    monkeypatch.setattr(tutor_graph, "get_llm", lambda temperature=0.7: fake)
+    monkeypatch.setattr(tutor_graph, "get_llm", lambda api_key=None, temperature=0.7: fake)
 
 
 def test_detect_topic():
@@ -188,8 +188,8 @@ def test_api_missing_key_returns_clear_error(monkeypatch):
         json={"user_message": "Explain arrays", "session_state": {"title": "Session"}},
     )
 
-    assert response.status_code == 500
-    assert "GROQ_API_KEY" in response.json()["detail"]
+    assert response.status_code == 400
+    assert "Groq API key" in response.json()["detail"]
 
 
 def test_api_valid_session_request_returns_updated_state(monkeypatch):
@@ -298,3 +298,18 @@ def test_malformed_model_json_falls_back_safely(monkeypatch):
 
     assert result["intent"] == "learning"
     assert result["evaluation"]["score"] == 30
+
+
+def test_api_with_custom_key_header_runs_successfully(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    patch_llm(monkeypatch, FakeLLM(intent="learning", response="Hint for arrays"))
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/tutor/message",
+        headers={"X-Groq-Api-Key": "my-custom-key"},
+        json={"user_message": "Explain arrays", "session_state": {"title": "Session"}},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["response"] == "Hint for arrays"

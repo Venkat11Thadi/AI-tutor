@@ -105,6 +105,7 @@ class TutorGraphState(BaseModel):
     pedagogy: Pedagogy | None = None
     response: str | None = None
     updated_state: SessionState | None = None
+    groq_api_key: str | None = None
 
     def as_graph_input(self) -> dict[str, Any]:
         return self.model_dump()
