@@ -2,6 +2,12 @@
 
 Zephyr Assist is a Socratic AI tutoring application for computer science and programming. Instead of giving direct answers, it guides students to discover solutions themselves through progressively detailed hints, analogies, and Socratic questioning.
 
+## Live Deployment
+
+- **Frontend (Vercel)**: [https://ai-tutor-aj5l-a451iakd5-venkat11thadis-projects.vercel.app/](https://ai-tutor-aj5l-a451iakd5-venkat11thadis-projects.vercel.app/)
+- **Backend (Render)**: [https://ai-tutor-w6jf.onrender.com](https://ai-tutor-w6jf.onrender.com)
+
+
 ## Key Features
 
 - **Socratic Tutoring Pipeline** — An 8-node LangGraph pipeline that classifies student intent, evaluates understanding, selects a teaching strategy, and generates guided responses.
