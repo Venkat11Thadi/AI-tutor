@@ -78,6 +78,12 @@ def init_db() -> None:
                 FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS otps (
+                email TEXT PRIMARY KEY,
+                otp TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_sessions_user_updated
                 ON sessions(user_id, updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_messages_session_position
@@ -96,6 +102,39 @@ def init_db() -> None:
 
 def normalize_email(email: str) -> str:
     return email.strip().lower()
+
+
+def save_otp(email: str, otp: str, expires_in_seconds: int = 600) -> None:
+    init_db()
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds)).isoformat()
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO otps (email, otp, expires_at)
+            VALUES (?, ?, ?)
+            """,
+            (normalize_email(email), otp, expires_at),
+        )
+
+
+def verify_otp(email: str, otp: str) -> bool:
+    init_db()
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT otp, expires_at FROM otps WHERE email = ?",
+            (normalize_email(email),),
+        ).fetchone()
+        if not row:
+            return False
+        
+        if utc_now() > row["expires_at"]:
+            return False
+            
+        if str(row["otp"]) != str(otp):
+            return False
+            
+        conn.execute("DELETE FROM otps WHERE email = ?", (normalize_email(email),))
+        return True
 
 
 def hash_password(password: str) -> str:
@@ -200,7 +239,7 @@ def create_user(email: str, password: str) -> dict[str, Any]:
                 user,
             )
     except sqlite3.IntegrityError as exc:
-        raise HTTPException(status_code=409, detail="Email is already registered.") from exc
+        raise HTTPException(status_code=409, detail="account exists with this email") from exc
     return {"id": user["id"], "email": user["email"], "created_at": user["created_at"]}
 
 

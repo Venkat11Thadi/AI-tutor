@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from . import db
-from .models import AuthRequest, AuthResponse, SessionState, TutorMessageRequest, TutorMessageResponse
+from .email_utils import generate_otp, send_otp_email
+from .models import AuthRequest, AuthResponse, OtpSendRequest, RegisterRequest, SessionState, TutorMessageRequest, TutorMessageResponse
 from .tutor_graph import run_tutor_pipeline
 
 
@@ -80,8 +81,22 @@ def optional_current_user(
     return dict(user)
 
 
+@app.post("/api/auth/otp/send")
+def send_otp(request: OtpSendRequest) -> dict:
+    email = request.email
+    if db.get_user_by_email(email):
+        raise HTTPException(status_code=409, detail="account exists with this email")
+    
+    otp = generate_otp()
+    db.save_otp(email, otp)
+    send_otp_email(email, otp)
+    return {"success": True, "detail": "Verification code sent to your email."}
+
+
 @app.post("/api/auth/register", response_model=AuthResponse)
-def register(request: AuthRequest) -> dict:
+def register(request: RegisterRequest) -> dict:
+    if request.otp is not None and not db.verify_otp(request.email, request.otp):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code.")
     user = db.create_user(request.email, request.password)
     token = db.create_access_token(user["id"])
     return {"access_token": token, "token_type": "bearer", "user": user}

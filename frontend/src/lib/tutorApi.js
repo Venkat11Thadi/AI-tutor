@@ -21,10 +21,17 @@ async function request(path, { token, ...options } = {}) {
   return data;
 }
 
-export async function register({ email, password }) {
+export async function sendOtp({ email }) {
+  return request("/api/auth/otp/send", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function register({ email, password, otp }) {
   return request("/api/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, otp }),
   });
 }
 

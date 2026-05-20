@@ -228,9 +228,13 @@ def test_auth_register_login_and_session_crud(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "auth.sqlite3")
     client = TestClient(app)
 
+    client.post("/api/auth/otp/send", json={"email": "student@example.com"})
+    with db.connect() as conn:
+        otp = conn.execute("SELECT otp FROM otps WHERE email='student@example.com'").fetchone()["otp"]
+
     registered = client.post(
         "/api/auth/register",
-        json={"email": "student@example.com", "password": "password123"},
+        json={"email": "student@example.com", "password": "password123", "otp": otp},
     )
 
     assert registered.status_code == 200
@@ -264,9 +268,13 @@ def test_authenticated_message_persists_session(monkeypatch, tmp_path):
     patch_llm(monkeypatch, FakeLLM(intent="learning", response="What changes each loop?"))
     client = TestClient(app)
 
+    client.post("/api/auth/otp/send", json={"email": "learner@example.com"})
+    with db.connect() as conn:
+        otp = conn.execute("SELECT otp FROM otps WHERE email='learner@example.com'").fetchone()["otp"]
+
     registered = client.post(
         "/api/auth/register",
-        json={"email": "learner@example.com", "password": "password123"},
+        json={"email": "learner@example.com", "password": "password123", "otp": otp},
     )
     headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
     session_id = client.post("/api/sessions", headers=headers).json()["id"]

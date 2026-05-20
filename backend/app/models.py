@@ -76,9 +76,17 @@ class TutorMessageResponse(BaseModel):
     topic: str
 
 
+class OtpSendRequest(BaseModel):
+    email: str
+
+
 class AuthRequest(BaseModel):
     email: str
     password: str = Field(min_length=8)
+
+
+class RegisterRequest(AuthRequest):
+    otp: str | None = Field(default=None, min_length=6, max_length=6)
 
 
 class UserResponse(BaseModel):

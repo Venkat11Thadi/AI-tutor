@@ -25,6 +25,7 @@ import {
   login,
   register,
   runTutorPipeline,
+  sendOtp,
 } from "./lib/tutorApi";
 
 const AUTH_TOKEN_KEY = "socraticcs_auth_token_v1";
@@ -119,6 +120,8 @@ function App() {
   const [isLoadingSessions, setIsLoadingSessions] = useState(Boolean(token));
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({ email: "", password: "" });
+  const [showOtpInput, setShowOtpInput] = useState(false);
+  const [otp, setOtp] = useState("");
   const [authError, setAuthError] = useState("");
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [error, setError] = useState("");
@@ -203,21 +206,33 @@ function App() {
     );
   }
 
+  const ENABLE_OTP_VERIFICATION = false;
+
   async function handleAuthSubmit(event) {
     event.preventDefault();
     setAuthError("");
     setIsAuthLoading(true);
     try {
-      const action = authMode === "register" ? register : login;
-      const result = await action(authForm);
-      localStorage.setItem(AUTH_TOKEN_KEY, result.access_token);
-      setToken(result.access_token);
-      setUser(result.user);
-      setAuthForm({ email: "", password: "" });
-      if (!localStorage.getItem("socraticcs_groq_api_key")) {
-        setView("settings");
+      if (ENABLE_OTP_VERIFICATION && authMode === "register" && !showOtpInput) {
+        await sendOtp({ email: authForm.email });
+        setShowOtpInput(true);
       } else {
-        setView("chat");
+        const action = authMode === "register" ? register : login;
+        const payload = authMode === "register" 
+          ? (ENABLE_OTP_VERIFICATION ? { ...authForm, otp } : authForm)
+          : authForm;
+        const result = await action(payload);
+        localStorage.setItem(AUTH_TOKEN_KEY, result.access_token);
+        setToken(result.access_token);
+        setUser(result.user);
+        setAuthForm({ email: "", password: "" });
+        setOtp("");
+        setShowOtpInput(false);
+        if (!localStorage.getItem("socraticcs_groq_api_key")) {
+          setView("settings");
+        } else {
+          setView("chat");
+        }
       }
     } catch (err) {
       setAuthError(err.message || "Authentication failed.");
@@ -225,6 +240,13 @@ function App() {
       setIsAuthLoading(false);
     }
   }
+
+  const handleSetAuthMode = (mode) => {
+    setAuthMode(mode);
+    setShowOtpInput(false);
+    setOtp("");
+    setAuthError("");
+  };
 
   function handleLogout() {
     localStorage.removeItem(AUTH_TOKEN_KEY);
@@ -367,9 +389,12 @@ function App() {
     return (
       <AuthView
         mode={authMode}
-        setMode={setAuthMode}
+        setMode={handleSetAuthMode}
         form={authForm}
         setForm={setAuthForm}
+        otp={otp}
+        setOtp={setOtp}
+        showOtpInput={showOtpInput}
         error={authError}
         isLoading={isAuthLoading}
         onSubmit={handleAuthSubmit}
@@ -514,7 +539,7 @@ function App() {
   );
 }
 
-function AuthView({ mode, setMode, form, setForm, error, isLoading, onSubmit }) {
+function AuthView({ mode, setMode, form, setForm, otp, setOtp, showOtpInput, error, isLoading, onSubmit }) {
   const isRegistering = mode === "register";
   const [showPassword, setShowPassword] = useState(false);
 
@@ -532,46 +557,67 @@ function AuthView({ mode, setMode, form, setForm, error, isLoading, onSubmit }) 
         </div>
 
         <div className="auth-copy">
-          <h1>{isRegistering ? "Create your account" : "Welcome back"}</h1>
-          <p>{isRegistering ? "Save every session as you learn." : "Continue from your saved sessions."}</p>
+          <h1>{isRegistering ? (showOtpInput ? "Verify your email" : "Create your account") : "Welcome back"}</h1>
+          <p>{isRegistering ? (showOtpInput ? "Enter the verification code sent to your email." : "Save every session as you learn.") : "Continue from your saved sessions."}</p>
         </div>
 
         <form className="auth-form" onSubmit={onSubmit}>
           {error && <div className="error-banner">{error}</div>}
-          <label>
-            <span>Email</span>
-            <input
-              type="email"
-              value={form.email}
-              onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-              autoComplete="email"
-              required
-            />
-          </label>
-          <label>
-            <span>Password</span>
-            <div className="password-field">
+          {!showOtpInput && (
+            <>
+              <label>
+                <span>Email</span>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                  autoComplete="email"
+                  required
+                />
+              </label>
+              <label>
+                <span>Password</span>
+                <div className="password-field">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={form.password}
+                    onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                    autoComplete={isRegistering ? "new-password" : "current-password"}
+                    minLength={8}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </label>
+            </>
+          )}
+
+          {showOtpInput && (
+            <label>
+              <span>Verification Code</span>
               <input
-                type={showPassword ? "text" : "password"}
-                value={form.password}
-                onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-                autoComplete={isRegistering ? "new-password" : "current-password"}
-                minLength={8}
+                type="text"
+                value={otp}
+                onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="123456"
+                pattern="\d{6}"
+                title="6-digit verification code"
+                autoComplete="one-time-code"
                 required
               />
-              <button
-                type="button"
-                className="password-toggle"
-                onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                tabIndex={-1}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-          </label>
+            </label>
+          )}
+
           <button className="primary-action auth-submit" type="submit" disabled={isLoading}>
-            {isLoading ? "Working..." : isRegistering ? "Register" : "Login"}
+            {isLoading ? "Working..." : isRegistering ? (showOtpInput ? "Verify & Register" : "Continue") : "Login"}
           </button>
         </form>
 
