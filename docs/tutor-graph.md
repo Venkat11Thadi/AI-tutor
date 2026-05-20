@@ -1,6 +1,6 @@
 # Tutor Graph Documentation
 
-The SocraticCS tutor backend is implemented in `backend/app/tutor_graph.py` as a LangGraph `StateGraph`. The graph turns one student message plus the current session state into one assistant response and an updated session state.
+The Zephyr Assist tutor backend is implemented in `backend/app/tutor_graph.py` as a LangGraph `StateGraph`. The graph turns one student message plus the current session state into one assistant response and an updated session state.
 
 ## State Shape
 

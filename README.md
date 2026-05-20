@@ -1,6 +1,6 @@
-# SocraticCS LangGraph Tutor
+# Zephyr Assist LangGraph Tutor
 
-This project contains a Python LangGraph backend for the 8-step Socratic CS tutor pipeline.
+This project contains a Python LangGraph backend for the 8-step Zephyr Assist CS tutor pipeline.
 
 Detailed graph documentation lives in `docs/tutor-graph.md`.
 
