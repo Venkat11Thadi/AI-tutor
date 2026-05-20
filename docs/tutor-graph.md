@@ -74,7 +74,7 @@ Structured-output parsing failures fall back safely:
 - Intent fallback: `learning`.
 - Evaluation fallback: score `30`, no concepts, no gaps.
 
-Missing `GROQ_API_KEY` raises a clear FastAPI `500` error before attempting a model call.
+Missing `GROQ_API_KEY` raises a clear FastAPI `400` error before attempting a model call. Invalid API keys during LLM calls return a `401` error with a descriptive message.
 
 ## Extension Points
 
@@ -82,5 +82,5 @@ Good places to extend the tutor:
 
 - Add a `quiz` strategy in `decide_pedagogy` after mastery.
 - Add a `feynman_check` node after `generate_hint` to ask the student to explain back.
-- Persist `SessionState` in a database instead of localStorage.
-- Store per-user thresholds and preferences once authentication exists.
+- Enable email OTP verification by setting `ENABLE_OTP_VERIFICATION = true` in `App.jsx`.
+- Add SMTP configuration for production email delivery.

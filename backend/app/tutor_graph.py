@@ -1,4 +1,4 @@
-"""LangGraph implementation of the SocraticCS tutor pipeline.
+"""LangGraph implementation of the Zephyr Assist tutor pipeline.
 
 The graph handles one student turn at a time. It classifies the message,
 updates the student model when appropriate, chooses a pedagogy strategy, and
@@ -42,6 +42,12 @@ def clamp_hint_level(value: int) -> int:
 
 
 class GraphState(TypedDict, total=False):
+    """LangGraph state dictionary carrying data between pipeline nodes.
+
+    All fields are optional so that individual nodes can return partial
+    updates which LangGraph merges into the running state.
+    """
+
     user_message: str
     conversation_history: list[dict[str, str]]
     session_state: dict[str, Any]
@@ -68,6 +74,15 @@ def get_llm(api_key: str | None = None, temperature: float = 0.7) -> ChatGroq:
 
 
 def message_history(history: list[dict[str, str]]) -> list[HumanMessage]:
+    """Convert conversation history dicts into LangChain ``HumanMessage`` objects.
+
+    Args:
+        history: A list of ``{"role": ..., "content": ...}`` dicts.
+
+    Returns:
+        A list of ``HumanMessage`` instances (content-only, roles are
+        flattened for prompt context).
+    """
     return [HumanMessage(content=item["content"]) for item in history if item.get("content")]
 
 
@@ -122,6 +137,18 @@ def decide_pedagogy(
 
 
 def classify_intent(state: GraphState) -> GraphState:
+    """Guardian node — classifies the student message intent.
+
+    Uses a structured-output LLM call to categorize the message as
+    ``"learning"``, ``"confusion"``, or ``"jailbreak"``. Falls back
+    to ``"learning"`` on non-auth parse errors.
+
+    Args:
+        state: The current graph state containing ``user_message``.
+
+    Returns:
+        Partial state update with ``intent`` and ``intent_reason``.
+    """
     messages = [
         SystemMessage(
             content=(
@@ -146,6 +173,19 @@ def classify_intent(state: GraphState) -> GraphState:
 
 
 def route_intent(state: GraphState) -> str:
+    """Conditional routing based on intent classification.
+
+    Routes to the appropriate downstream node:
+    ``"jailbreak"``, ``"unlocked_jailbreak"``, ``"confusion"``, or
+    ``"learning"``.
+
+    Args:
+        state: The current graph state with ``intent`` and
+            ``session_state``.
+
+    Returns:
+        A routing key string consumed by ``add_conditional_edges``.
+    """
     intent = state.get("intent", "learning")
     if intent == "jailbreak":
         session_state = SessionState.model_validate(state["session_state"])
@@ -158,6 +198,18 @@ def route_intent(state: GraphState) -> str:
 
 
 def evaluate_understanding(state: GraphState) -> GraphState:
+    """Evaluator node — scores the student's current understanding.
+
+    Invokes a structured-output LLM call with the conversation history
+    and latest message to produce a score, reasoning, identified
+    concepts, and knowledge gaps.
+
+    Args:
+        state: The current graph state.
+
+    Returns:
+        Partial state update with ``evaluation`` dict.
+    """
     messages = [
         SystemMessage(
             content=(
@@ -188,6 +240,15 @@ def evaluate_understanding(state: GraphState) -> GraphState:
 
 
 def update_state_node(state: GraphState) -> GraphState:
+    """Merge the evaluation result into the session's student model.
+
+    Args:
+        state: The current graph state with ``session_state``,
+            ``evaluation``, and ``intent``.
+
+    Returns:
+        Partial state update with ``updated_state``.
+    """
     session_state = SessionState.model_validate(state["session_state"])
     evaluation = EvaluationResult.model_validate(state["evaluation"])
     updated = update_student_state(session_state, evaluation, state["intent"])
@@ -195,6 +256,18 @@ def update_state_node(state: GraphState) -> GraphState:
 
 
 def detect_learning_state_node(state: GraphState) -> GraphState:
+    """Derive the coarse learning state from the updated scores.
+
+    Uses the updated session state, current intent, and hint count to
+    classify the student into one of the ``LearningState`` categories.
+
+    Args:
+        state: The current graph state with ``updated_state`` and
+            ``intent``.
+
+    Returns:
+        Partial state update with ``learning_state``.
+    """
     updated_state = SessionState.model_validate(state["updated_state"])
     learning_state = detect_learning_state(
         updated_state,
@@ -205,6 +278,17 @@ def detect_learning_state_node(state: GraphState) -> GraphState:
 
 
 def decide_pedagogy_node(state: GraphState) -> GraphState:
+    """Choose the teaching strategy based on the learning state.
+
+    Wraps :func:`decide_pedagogy` as a LangGraph node.
+
+    Args:
+        state: The current graph state with ``updated_state`` and
+            ``learning_state``.
+
+    Returns:
+        Partial state update with ``pedagogy``.
+    """
     updated_state = SessionState.model_validate(state["updated_state"])
     pedagogy = decide_pedagogy(
         state["learning_state"],
@@ -215,6 +299,18 @@ def decide_pedagogy_node(state: GraphState) -> GraphState:
 
 
 def generate_hint(state: GraphState) -> GraphState:
+    """Create a Socratic tutor response guided by the chosen pedagogy.
+
+    Builds a strategy-specific system prompt and invokes the LLM to
+    produce the assistant message.
+
+    Args:
+        state: The current graph state with ``updated_state``,
+            ``pedagogy``, ``topic``, and ``conversation_history``.
+
+    Returns:
+        Partial state update with ``response``.
+    """
     updated_state = SessionState.model_validate(state["updated_state"])
     pedagogy = Pedagogy.model_validate(state["pedagogy"])
     strategy_prompts = {
@@ -262,6 +358,17 @@ Rules:
 
 
 def generate_jailbreak_response(state: GraphState) -> GraphState:
+    """Block a direct-answer request when the student hasn't met the threshold.
+
+    Returns a canned response encouraging the student to keep working
+    toward the jailbreak threshold before receiving direct answers.
+
+    Args:
+        state: The current graph state with ``session_state``.
+
+    Returns:
+        Partial state update with ``response`` and ``pedagogy``.
+    """
     session_state = SessionState.model_validate(state["session_state"])
     return {
         "response": (
@@ -275,6 +382,19 @@ def generate_jailbreak_response(state: GraphState) -> GraphState:
 
 
 def generate_unlocked_jailbreak_response(state: GraphState) -> GraphState:
+    """Provide a direct answer when the understanding threshold is met.
+
+    Uses the LLM to craft a complete, educational answer filling in
+    remaining knowledge gaps.
+
+    Args:
+        state: The current graph state with ``session_state``,
+            ``topic``, and ``conversation_history``.
+
+    Returns:
+        Partial state update with ``response``, ``updated_state``,
+        ``pedagogy``, and ``learning_state``.
+    """
     session_state = SessionState.model_validate(state["session_state"])
     system_prompt = f"""You are Zephyr Assist. The student has reached the configured direct-answer threshold.
 They may now receive the remaining information directly.
@@ -303,6 +423,19 @@ Stay concise and educational."""
 
 
 def generate_confusion_response(state: GraphState) -> GraphState:
+    """Generate an empathetic response for a confused or frustrated student.
+
+    Breaks the problem into the smallest first step and asks a simple
+    question to rebuild confidence.
+
+    Args:
+        state: The current graph state with ``session_state`` and
+            ``conversation_history``.
+
+    Returns:
+        Partial state update with ``response``, ``updated_state``,
+        ``pedagogy``, and ``learning_state``.
+    """
     result = get_llm(state.get("groq_api_key"), temperature=0.6).invoke(
         [
             SystemMessage(
@@ -329,6 +462,17 @@ def generate_confusion_response(state: GraphState) -> GraphState:
 
 
 def finalize(state: GraphState) -> GraphState:
+    """Assemble the final response and updated session state.
+
+    Appends user and assistant messages to the conversation, increments
+    hint count for learning intents, and packages the final state.
+
+    Args:
+        state: The completed graph state after response generation.
+
+    Returns:
+        Partial state update with ``updated_state`` and ``topic``.
+    """
     session_state = SessionState.model_validate(
         state.get("updated_state") or state["session_state"]
     )
@@ -370,6 +514,15 @@ def finalize(state: GraphState) -> GraphState:
 
 
 def build_tutor_graph():
+    """Construct and compile the LangGraph tutor pipeline.
+
+    Wires all nodes and edges — intent classification, evaluation,
+    state update, pedagogy decision, response generation, and
+    finalization — into a compiled ``StateGraph``.
+
+    Returns:
+        A compiled LangGraph ready for ``invoke()``.
+    """
     graph = StateGraph(GraphState)
     graph.add_node("classify_intent", classify_intent)
     graph.add_node("evaluate_understanding", evaluate_understanding)
@@ -409,6 +562,23 @@ tutor_graph = build_tutor_graph()
 
 
 def run_tutor_pipeline(user_message: str, session_state: SessionState, groq_api_key: str | None = None) -> dict[str, Any]:
+    """Public entry point for the Zephyr Assist tutor pipeline.
+
+    Validates the API key, detects the topic if needed, and invokes the
+    compiled LangGraph with the assembled input state.
+
+    Args:
+        user_message: The student's latest message text.
+        session_state: The current session state.
+        groq_api_key: Optional client-supplied Groq API key.
+
+    Returns:
+        A dict containing ``response``, ``intent``, ``updated_state``,
+        ``pedagogy``, ``evaluation``, ``learning_state``, and ``topic``.
+
+    Raises:
+        HTTPException: 400 if no Groq API key is available.
+    """
     # Validate API key exists at entry point
     api_key = groq_api_key or os.getenv("GROQ_API_KEY") or os.getenv("groq_api_key")
     if not api_key:

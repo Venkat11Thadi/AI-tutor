@@ -1,3 +1,5 @@
+"""Email utilities for OTP verification in the Zephyr Assist registration flow."""
+
 import os
 import random
 import smtplib

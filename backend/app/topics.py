@@ -1,3 +1,6 @@
+"""Simple keyword-based topic detection for CS questions."""
+
+# Supported CS topic list used for keyword matching against student messages.
 CS_TOPICS = [
     "Arrays & Strings",
     "Linked Lists",
@@ -28,6 +31,17 @@ CS_TOPICS = [
 
 
 def detect_topic(message: str) -> str:
+    """Detect the CS topic from a student message using keyword matching.
+
+    Compares the first word of each known topic against the lowercased
+    message. Returns the first matching topic or a generic fallback.
+
+    Args:
+        message: The student's raw message text.
+
+    Returns:
+        The matched topic name, or ``"CS/Programming"`` if no match is found.
+    """
     lower = message.lower()
     for topic in CS_TOPICS:
         first_word = topic.lower().split(" ")[0]

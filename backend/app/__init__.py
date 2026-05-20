@@ -1,1 +1,1 @@
-"""SocraticCS backend package."""
+"""Zephyr Assist backend package."""
