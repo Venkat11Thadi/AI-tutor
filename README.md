@@ -4,7 +4,7 @@ Zephyr Assist is a Socratic AI tutoring application for computer science and pro
 
 ## Live Deployment
 
-- **Frontend (Vercel)**: [https://ai-tutor-aj5l-a451iakd5-venkat11thadis-projects.vercel.app/](https://ai-tutor-aj5l-a451iakd5-venkat11thadis-projects.vercel.app/)
+- **Frontend (Vercel)**: [https://ai-tutor-aj5l-a451iakd5-venkat11thadis-projects.vercel.app/](https://ai-tutor-aj5l.vercel.app/)
 - **Backend (Render)**: [https://ai-tutor-w6jf.onrender.com](https://ai-tutor-w6jf.onrender.com)
 
 
